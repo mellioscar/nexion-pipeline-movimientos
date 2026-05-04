@@ -45,6 +45,7 @@ Firestore resultante:
 """
 
 import os
+import io
 import base64
 import tempfile
 import logging
@@ -268,7 +269,7 @@ def preparar_excel_temporal(data: bytes) -> str:
 
     analizar_stock.cargar_datos() lee exactamente esas dos hojas.
     """
-    df = pd.read_excel(data, sheet_name="STK", header=0)
+    df = pd.read_excel(io.BytesIO(data), sheet_name="STK", header=0)
     log.info(f"STK cargado: {len(df):,} filas")
 
     # 1. Normalizar columnas
