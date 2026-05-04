@@ -78,7 +78,7 @@ GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 GMAIL_CREDS  = os.getenv("GMAIL_CREDENTIALS_PATH", "credentials.json")
 GMAIL_TOKEN  = os.getenv("GMAIL_TOKEN_PATH",       "token_movimientos.json")
 ASUNTO_MOV   = os.getenv("ASUNTO_MOVIMIENTOS",     "Movimientos de stock diarios")
-LABEL_MOV    = "NEXION_MOV_PROCESADO"
+LABEL_MOV    = "Procesado-Movimientos"
 
 # Comprobantes de interdepósito donde se aplican las exclusiones
 COMP_INTERDEPOSITO = {"REM-INTER", "RCP-INTER"}
