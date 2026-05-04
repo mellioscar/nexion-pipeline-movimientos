@@ -107,9 +107,6 @@ COLS_REQUERIDAS = [
     "Cant", "CantIngreso", "CantEgreso", "Kgs", "Imp. Costo",
 ]
 
-# Columnas mínimas de Stock_Inicial (siempre vacío en este pipeline)
-COLS_STOCK_INI = ["Depósito", "Artículo", "Stock_Unidades", "Stock_Kg"]
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -261,38 +258,21 @@ def aplicar_exclusiones_interdeposito(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def preparar_excel_temporal(data: bytes) -> str:
-    """
-    Lee el STK diario, normaliza columnas, aplica exclusiones de
-    interdepósito y crea un Excel temporal con dos hojas:
-        - Movimientos   ← datos procesados
-        - Stock_Inicial ← siempre vacío (análisis sin snapshot mensual)
-
-    analizar_stock.cargar_datos() lee exactamente esas dos hojas.
-    """
-    df = pd.read_excel(io.BytesIO(data), sheet_name="STK", header=0)
-    log.info(f"STK cargado: {len(df):,} filas")
-
-    # 1. Normalizar columnas
-    df = normalizar_columnas(df)
-
-    # 2. Filtrar exclusiones de interdepósito
-    df = aplicar_exclusiones_interdeposito(df)
+    # ... (código de normalización y exclusiones) ...
 
     # Resumen antes de crear el temp
     comps = df["Comp."].value_counts().to_dict()
     log.info(f"Comprobantes tras filtros: {comps}")
 
-    # 3. Stock_Inicial vacío (modo diario — sin snapshot mensual)
-    df_stock_ini = pd.DataFrame(columns=COLS_STOCK_INI)
-
-    # 4. Guardar Excel temporal con las dos hojas
+    # 4. Guardar Excel temporal (AQUÍ BORRAMOS LA HOJA DE STOCK INICIAL)
     tmp = tempfile.NamedTemporaryFile(
         delete=False, suffix=".xlsx", prefix="nexion_mov_"
     )
     tmp.close()
+    
+    # Ahora solo guardamos la hoja de Movimientos
     with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
-        df.to_excel(writer,           sheet_name="Movimientos",  index=False)
-        df_stock_ini.to_excel(writer, sheet_name="Stock_Inicial", index=False)
+        df.to_excel(writer, sheet_name="Movimientos", index=False)
 
     log.info(
         f"Excel temporal: {tmp.name} "

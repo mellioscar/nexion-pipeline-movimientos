@@ -44,10 +44,53 @@ def limpiar_y_filtrar_datos(df):
     return df_filtrado
 
 def analizar_interdepositos(df):
-    """Agrupa los movimientos de interdepósito restantes tras el filtro del pipeline."""
-    df_inter = df[df['Comp.'].isin(['REM-INTER', 'RCP-INTER'])]
+    """
+    Agrupa los movimientos de interdepósito.
+    Implementa un motor de emparejamiento matemático para detectar y
+    eliminar los movimientos virtuales de reservas sin depender de los textos.
+    """
+    # 1. Filtramos solo los comprobantes que nos interesan
+    df_inter = df[df['Comp.'].isin(['REM-INTER', 'RCP-INTER'])].copy()
     
-    resumen = df_inter.groupby(['Depósito', 'Artículo', 'Descripción']).agg({
+    # --- MOTOR DE ELIMINACIÓN VIRTUAL ---
+    # Guardamos el índice original para saber exactamente qué filas borrar al final
+    df_inter['idx_original'] = df_inter.index
+
+    # Separamos egresos e ingresos
+    df_rem = df_inter[df_inter['Comp.'] == 'REM-INTER']
+    df_rcp = df_inter[df_inter['Comp.'] == 'RCP-INTER']
+
+    # Cruzamos (Merge) buscando la coincidencia exacta: Fecha, Artículo y Cantidad
+    cruce = pd.merge(
+        df_rem, df_rcp,
+        on=['Fec. Comp.', 'Artículo', 'Cant'],
+        suffixes=('_rem', '_rcp')
+    )
+
+    idx_a_borrar = set()
+
+    # Evaluamos cada coincidencia encontrada
+    for _, row in cruce.iterrows():
+        # Formateamos a 4 dígitos para que coincida perfecto con el config (ej: 7 -> '0007')
+        dep_rem = str(row['Depósito_rem']).zfill(4)
+        dep_rcp = str(row['Depósito_rcp']).zfill(4)
+
+        # Preguntamos: ¿El destino de este remito es su propia reserva? (o viceversa)
+        if config.MAPEO_RESERVAS.get(dep_rem) == dep_rcp:
+            idx_rem = row['idx_original_rem']
+            idx_rcp = row['idx_original_rcp']
+
+            # Evitamos borrar dos veces en el caso raro de múltiples movimientos idénticos en el mismo día
+            if idx_rem not in idx_a_borrar and idx_rcp not in idx_a_borrar:
+                idx_a_borrar.add(idx_rem)
+                idx_a_borrar.add(idx_rcp)
+
+    # Filtramos el DataFrame original eliminando los pares virtuales detectados
+    df_inter_limpio = df_inter[~df_inter['idx_original'].isin(idx_a_borrar)].copy()
+    # ------------------------------------
+
+    # Ahora sí, agrupamos solo los movimientos reales que quedaron vivos
+    resumen = df_inter_limpio.groupby(['Depósito', 'Artículo', 'Descripción']).agg({
         'Kgs': 'sum',
         'Cant': 'sum',
         'Imp. Costo': 'sum'
@@ -101,7 +144,7 @@ def analizar_periodo(ruta_excel, periodo, incluir_interdeposito=True, incluir_al
     Orquestador llamado por pipeline_movimientos_gmail.py.
     """
     # El archivo temporal del pipeline solo tiene 'Movimientos' y un 'Stock_Inicial' vacío
-    df_raw = pd.read_excel(ruta_excel, sheet_name="Movimientos")
+    df_raw = pd.read_excel(ruta_excel, sheet_name=0)
     df_limpio = limpiar_y_filtrar_datos(df_raw)
     
     # Calculamos la métrica base para que el log del pipeline funcione sin romperse
