@@ -15,18 +15,14 @@ def inicializar_firebase():
     return firestore.client()
 
 def subir_a_firebase(resultado, db):
-    """Sube el JSON consolidado a las colecciones de analytics e histórico."""
+    """Sube el JSON consolidado a la colección unificada de indicadores."""
     periodo = resultado['periodo']
     
-    # Escribir en stock_analytics
-    doc_ref = db.collection('stock_analytics').document(periodo)
+    # Nueva ruta: indicadores / operaciones / movimientos / 2026-05
+    doc_ref = db.collection('indicadores').document('operaciones').collection('movimientos').document(periodo)
     doc_ref.set(resultado, merge=True)
     
-    # Escribir en stock_historico
-    doc_historico = db.collection('stock_historico').document(periodo)
-    doc_historico.set(resultado, merge=True)
-    
-    log.info(f"✓ Datos del período {periodo} guardados en Firestore exitosamente.")
+    log.info(f"✓ Datos del período {periodo} guardados en Firestore (indicadores/operaciones).")
 
 def limpiar_y_filtrar_datos(df):
     """Aplica la regla estricta para chapas de 13 metros y limpia la data base."""
