@@ -1,9 +1,17 @@
-google-auth==2.29.0
-google-auth-oauthlib==1.2.0
-google-api-python-client==2.126.0
-pandas==2.2.2
-openpyxl==3.1.2
-numpy==1.26.4
-scipy==1.13.0
-firebase-admin==6.5.0
-python-dotenv==1.0.1
+# Core (igual que el requirements.txt original de analizar_stock.py)
+pandas>=2.2.0
+numpy>=1.26.0
+openpyxl>=3.1.0
+
+# Firebase
+firebase-admin>=6.5.0
+google-cloud-firestore>=2.16.0
+
+# Utilidades
+python-dateutil>=2.9.0
+
+# Gmail API (agregado para el pipeline automático)
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.126.0
+python-dotenv>=1.0.1

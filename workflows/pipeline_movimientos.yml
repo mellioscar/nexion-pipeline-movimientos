@@ -1,0 +1,105 @@
+# .github/workflows/pipeline_movimientos.yml
+# Pipeline: Gmail → Movimientos de Stock + Stock Valorizado → Firebase
+# Carlos Isla y Cía. — NET-LogistK ISLA
+#
+# Horario: 20:45 ART = 23:45 UTC
+# Procesa DOS tipos de email:
+#   - "Movimientos de stock diarios" → todos los días
+#   - "Stock a una fecha"            → 1° de cada mes (stock valorizado)
+
+name: Pipeline Movimientos Diario
+
+on:
+  schedule:
+    - cron: '45 23 * * *'    # 23:45 UTC = 20:45 ART
+  workflow_dispatch:          # ejecución manual desde GitHub → Actions
+
+jobs:
+  pipeline:
+    name: Movimientos Stock → Firebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Restaurar credenciales
+        env:
+          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN:       ${{ secrets.GMAIL_TOKEN_MOV_JSON }}
+          FIREBASE_KEY:      ${{ secrets.FIREBASE_KEY_JSON }}
+        run: |
+          echo "$GMAIL_CREDENTIALS" > credentials.json
+          echo "$GMAIL_TOKEN"       > token_movimientos.json
+          echo "$FIREBASE_KEY"      > serviceAccountKey.json
+          cat > .env << 'EOF'
+          GMAIL_CREDENTIALS_PATH=credentials.json
+          GMAIL_TOKEN_PATH=token_movimientos.json
+          ASUNTO_MOVIMIENTOS=Movimientos de stock diarios
+          ASUNTO_STOCK=Stock a una fecha
+          EOF
+
+      - name: Ejecutar pipeline
+        run: python pipeline_movimientos_gmail.py
+
+      - name: Actualizar token si fue refrescado
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_SECRETS }}
+          REPO:     ${{ github.repository }}
+        run: |
+          if [ ! -f "TOKEN_REFRESHED_MOV" ]; then
+            echo "Token no refrescado — sin cambios."
+            exit 0
+          fi
+          echo "Token refrescado — actualizando Secret..."
+          pip install PyNaCl -q
+          python3 << 'PYEOF'
+          import os, base64, json, urllib.request, urllib.error
+          token    = open("token_movimientos.json").read()
+          gh_token = os.environ["GH_TOKEN"]
+          repo     = os.environ["REPO"]
+          headers  = {
+              "Authorization": f"token {gh_token}",
+              "Content-Type":  "application/json",
+              "Accept":        "application/vnd.github+json",
+          }
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+              headers=headers
+          )
+          with urllib.request.urlopen(req) as r:
+              pk = json.loads(r.read())
+          from nacl import encoding, public
+          box = public.SealedBox(public.PublicKey(pk["key"].encode(), encoding.Base64Encoder()))
+          enc = base64.b64encode(box.encrypt(token.encode())).decode()
+          body = json.dumps({"encrypted_value": enc, "key_id": pk["key_id"]}).encode()
+          req2 = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/actions/secrets/GMAIL_TOKEN_MOV_JSON",
+              data=body, headers=headers, method="PUT"
+          )
+          try:
+              urllib.request.urlopen(req2)
+              print("✓ Secret GMAIL_TOKEN_MOV_JSON actualizado")
+          except urllib.error.HTTPError as e:
+              print(f"Error: {e.code}")
+          PYEOF
+
+      - name: Limpiar credenciales
+        if: always()
+        run: |
+          rm -f credentials.json token_movimientos.json serviceAccountKey.json \
+                .env TOKEN_REFRESHED_MOV
+          echo "✓ Credenciales eliminadas"

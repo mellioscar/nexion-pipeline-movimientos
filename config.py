@@ -1,145 +1,188 @@
 """
-Configuración del pipeline de análisis de ventas
+config.py
+Configuración del pipeline de análisis de movimientos de stock
 Carlos Isla y Cía - NET-LogistK ISLA
+Versión: 3.0 - Pipeline Gmail automatizado
 """
 
 # ============================================================================
-# MAPEO DE SUCURSALES POR PUNTO DE VENTA (PV)
+# DEPÓSITOS
 # ============================================================================
-# El PV se extrae del campo "Número" (ej: "A00045-00140473" → PV=45)
-# Este mapeo coincide con el reporte de sucursales de Nexion
-
-PV_SUCURSAL = {
-    44: 'NQN Suc.centro',      # CASA CENTRAL → va con NQN Centro en reportes
-    45: 'SAN JUAN',            # DPM
-    46: 'RUTA 151',            # CIPOLLETTI Ruta 151
-    47: 'NEUQUEN',             # NQN principal
-    48: 'ESMERALDA',           # CIPO ESMERALDA
-    49: 'PLOTTIER',            # PLOTTIER
-    56: 'VTAS WEB',            # REDES (ventas online)
-    58: 'VILLA REGINA',        # VILLA REGINA
-    59: 'NEUQUEN',             # NEUQUEN (se agrupa con PV 47)
-    60: 'NQN Suc.centro',      # NQN CENTRO
-    61: 'CUTRAL-CO',           # CCO
-    63: 'CENTENARIO',          # CENTENARIO
-    114: 'VTAS WEB',           # ROCA-WEB (se agrupa con PV 56)
-}
-
-# PVs a excluir (movimientos internos: ajustes, cheques rechazados, impuestos)
-PV_EXCLUIR = [0]
-
-# Fallback: si un PV no está mapeado, usar Cod SUC
-SUCURSALES_CODSUC = {
-    'DPM': 'SAN JUAN',
-    'NQN': 'NEUQUEN',
-    'CIPO2': 'RUTA 151',
-    'CCO': 'CUTRAL-CO',
-    'CENTRAL': 'VTAS WEB',
-    'CIPO': 'ESMERALDA',
-    'REGINA': 'VILLA REGINA',
-    'CENTENARIO': 'CENTENARIO',
-    'PLT': 'PLOTTIER',
-}
-
-# Sufijo del nombre del vendedor → sucursal
-SUFIJO_SUCURSAL = {
-    'SJ': 'DPM',
-    'NQN': 'NQN',
-    'CCO': 'CCO',
-    'ESM': 'CIPO',
-    'VR': 'REGINA',
-    '151': 'PLT',
-    'WEB': 'CENTRAL',
+DEPOSITOS = {
+    5:  'Neuquén',
+    7:  'San Juan',
+    9:  'Planta de Hierro',
+    11: 'Carpintería',
+    14: 'JJ Gómez',
+    15: 'Cipolletti',
+    23: 'Cutral-Co',
 }
 
 # ============================================================================
 # TIPOS DE COMPROBANTE
 # ============================================================================
 
-FACTURAS = ['Factura de Venta']
-NOTAS_CREDITO = ['Nota de Crédito Venta', 'Nota de Crédito Venta x Ajuste']
-NOTAS_DEBITO = ['Nota de Débito Venta']
-CANAL_WEB = 'Venta WEB'
+# Egresos de stock (ventas + movimientos internos)
+TIPOS_EGRESO = [
+    'Remito',        # Ventas a clientes
+    'REM-INTER',     # Transferencia a otro depósito
+    'Egr.Stk. R',    # Rotura
+    'Egr.Stk.RR',    # Rotura de reparto
+    'Egr.R. Pro',    # Rotura proveedor
+    'Egr.Stk DI',    # Diferencia de inventario
+    'Egr.Stk.AC',    # Atención comercial
+    'Egr.Stk.CO',    # Conversión
+    'Egr.Stk.VE',    # Vencimiento
+    'Egr.Stk.MD',    # Migración DYN
+]
 
-# ============================================================================
-# FAMILIAS DE FLETE
-# ============================================================================
+# Ingresos de stock (compras + movimientos internos)
+TIPOS_INGRESO = [
+    'Recep.Cpra',    # Compras a proveedores
+    'RCP-INTER',     # Recepción desde otro depósito
+    'De.Mercad',     # Devolución de cliente
+    'Ing.Stk.DI',    # Diferencia de inventario
+    'Ing.Stk.RE',    # Recupero
+    'Ing.Stk.AC',    # Atención comercial
+    'Ing.Stk.CO',    # Conversión
+    'Ing.Stk.DY',    # Migración DYN
+]
 
-FAMILIA_FLETE = 'FLETES'
+# Ajustes de stock — comprobantes que se analizan en detalle
+# (ingresos y egresos que no son ventas ni compras normales)
+TIPOS_AJUSTE_INGRESO = [
+    'Ing.Stk.DI',    # Diferencia de inventario
+    'Ing.Stk.RE',    # Recupero
+    'Ing.Stk.AC',    # Atención comercial
+    'Ing.Stk.CO',    # Conversión (cambio de artículo/unidad)
+    'Ing.Stk.DY',    # Migración DYN
+    'De.Mercad',     # Devolución de mercadería
+]
 
-# ============================================================================
-# SCORE ADN — PESOS Y UMBRALES
-# ============================================================================
+TIPOS_AJUSTE_EGRESO = [
+    'Egr.Stk DI',    # Diferencia de inventario
+    'Egr.Stk. R',    # Rotura
+    'Egr.Stk.RR',    # Rotura de reparto
+    'Egr.R. Pro',    # Rotura proveedor
+    'Egr.Stk.AC',    # Atención comercial
+    'Egr.Stk.CO',    # Conversión
+    'Egr.Stk.VE',    # Vencimiento
+    'Egr.Stk.MD',    # Migración DYN
+]
 
-SCORE_WEIGHTS = {
-    'facturacion': 0.25,
-    'rentabilidad': 0.25,
-    'cartera': 0.15,
-    'diversidad': 0.13,
-    'actividad': 0.12,
-    'calidad': 0.10,
+TIPOS_AJUSTE = TIPOS_AJUSTE_INGRESO + TIPOS_AJUSTE_EGRESO
+
+# RMC - Recepciones de Clientes (Devoluciones)
+TIPOS_RMC_DEPOSITO = [
+    'RMC-D-CdM',     # Cambio de Material
+    'RMC-D-EDR',     # Error de Remisión
+    'RMC-D-AT',      # Atención Comercial
+    'RMC-D-EdE',     # Error de Entrega
+]
+
+TIPOS_RMC_REPARTO = [
+    'RMC-R-NpR',     # Nadie Para Recibir
+    'RMC-R-NNM',     # No Necesita el Material
+    'RMC-R-RER',     # Rotura en Reparto
+    'RMC-R-FdH',     # Fuera de Horario
+    'RMC-R-DE',      # Dirección Errónea
+    'RMC-R-EdE',     # Error de Entrega
+    'RMC-R-RdO',     # Retiro de Obras
+    'RMC-R-EdF',     # Error de Facturación
+    'RMC-R-RdE',     # Reprogramación de Entrega
+    'RMC-R-CC',      # Condición Climática
+    'RMC-R-IE',      # Impedimento de Entrega
+    'RMC-R-EdC',     # Error de Carga
+    'RMC-R-EdR',     # Error Remisión de Reparto
+    'RMC-FA',        # Factores Ajenos
+    'RMC-MD',        # Material Dañado
+    'RMC-FeC',       # Faltante en Carga
+    'RMC-OTROS',     # Otros
+]
+
+TIPOS_RMC = TIPOS_RMC_DEPOSITO + TIPOS_RMC_REPARTO
+
+DESCRIPCIONES_RMC = {
+    'RMC-D-CdM': 'Cambio de Material',
+    'RMC-D-EDR': 'Error de Remisión',
+    'RMC-D-AT':  'Atención Comercial',
+    'RMC-D-EdE': 'Error de Entrega (Depósito)',
+    'RMC-R-NpR': 'Nadie Para Recibir',
+    'RMC-R-NNM': 'No Necesita el Material',
+    'RMC-R-RER': 'Rotura en Reparto',
+    'RMC-R-FdH': 'Fuera de Horario',
+    'RMC-R-DE':  'Dirección Errónea',
+    'RMC-R-EdE': 'Error de Entrega (Reparto)',
+    'RMC-R-RdO': 'Retiro de Obras',
+    'RMC-R-EdF': 'Error de Facturación',
+    'RMC-R-RdE': 'Reprogramación de Entrega',
+    'RMC-R-CC':  'Condición Climática',
+    'RMC-R-IE':  'Impedimento de Entrega',
+    'RMC-R-EdC': 'Error de Carga',
+    'RMC-R-EdR': 'Error Remisión de Reparto',
+    'RMC-FA':    'Factores Ajenos',
+    'RMC-MD':    'Material Dañado',
+    'RMC-FeC':   'Faltante en Carga',
+    'RMC-OTROS': 'Otros',
 }
 
-SCORE_METHOD = 'percentiles'
+# ============================================================================
+# EXCLUSIONES DE INTERDEPÓSITO
+# ============================================================================
+# Artículos que se excluyen del análisis de interdepósito porque son
+# movimientos planificados y fijos (no representan ineficiencias).
+#
+# Configurar acá los rubros y artículos específicos a excluir.
+# El pipeline filtra estos registros de REM-INTER / RCP-INTER
+# ANTES de pasarlos a analizar_stock.py.
+#
+# RUBROS EXCLUIDOS:
+#   - PROD.MET. = HIERRO TORSIONADO: se produce en Planta de Hierro
+#     y Carpintería y se distribuye a toda la red. Es un movimiento
+#     fijo y planificado, no una ineficiencia de abastecimiento.
+#
+# Para agregar más, añadir el nombre exacto del rubro (campo NomRBART)
+# o el código de artículo (campo CodART).
 
-# Mínimo de transacciones para ser elegible al score
-MIN_TXNS_SCORE = 10
+INTERDEPOSITO_EXCLUIR_RUBROS = [
+    'PROD.MET. = HIERRO TORSIONADO',
+    # Agregar aquí otros rubros con movimientos fijos planificados
+]
+
+INTERDEPOSITO_EXCLUIR_ARTICULOS = [
+    # Agregar aquí códigos de artículo específicos si es necesario
+    # Ejemplo: '005263', '005264'
+]
 
 # ============================================================================
-# BADGES DE ESTADO
+# UMBRALES PARA ALERTAS
 # ============================================================================
-
-BADGES = {
-    'estrella': {'min_score': 65, 'label': 'Estrella', 'color': 'green'},
-    'estable': {'min_score': 45, 'label': 'Estable', 'color': 'blue'},
-    'atencion': {'min_score': 25, 'label': 'Atención', 'color': 'yellow'},
-    'riesgo': {'min_score': 0, 'label': 'En riesgo', 'color': 'red'},
-    'inactivo': {'min_score': -1, 'label': 'Inactivo', 'color': 'gray'},
-}
-
-# ============================================================================
-# UMBRALES PARA RISK FACTORS Y RECOMMENDATIONS
-# ============================================================================
-
 UMBRALES = {
-    # Risk factors
-    'margen_bajo_pct': 20,
-    'margen_bajo_neto_min': 100_000_000,
-    'concentracion_clientes_max': 5,
-    'concentracion_neto_min': 50_000_000,
-    'hhi_alto': 3000,
-    'nc_frecuentes_min': 5,
-    'flete_bajo_per_kg': 5,             # $/kg — por debajo es "no cobra flete"
-    'flete_bajo_kgs_min': 50_000,       # Kgs mínimos para considerar (volumen significativo)
-    # Recommendations
-    'capacitar_flete_per_kg': 8,        # $/kg — por debajo sugerir capacitar
-    'flete_alto_per_kg': 20,            # $/kg — por encima es "cobra bien el flete"
-    'ampliar_mix_rubros': 4,
-    'diversificar_clientes': 5,
-    'revisar_descuentos_margen': 20,
-    'reasignar_territorio_pct_own': 50,
-    'referente_web_pct': 30,
+    'anomalia_zscore':               3.0,
+    'quiebre_dias_critico':          15,
+    'quiebre_dias_medio':            30,
+    'stock_descendente_porcentaje': -50,
+    'stock_descendente_meses':        2,
+    'discrepancia_stock_absoluta':  100,   # unidades
+    'discrepancia_stock_porcentaje': 10,   # %
 }
+
+# ============================================================================
+# ARTÍCULOS A EXCLUIR DE ANÁLISIS DE QUIEBRES
+# (servicios, no productos físicos)
+# ============================================================================
+SERVICIOS_EXCLUIR = [
+    'CORTE METALURGICO',
+    'CORTE',
+    'SERVICIO',
+    'FLETE',
+    'TRANSPORTE',
+    'MANO DE OBRA',
+    'ACARREO',
+]
 
 # ============================================================================
 # FIREBASE
 # ============================================================================
-
 FIREBASE_CREDENTIALS_PATH = 'serviceAccountKey.json'
-
-# Estructura Firestore real — indicadores/{area}/{subcoleccion}/{periodo}
-# indicadores/comercial/ventas_analytics/{periodo}
-# indicadores/comercial/ventas_analytics/{periodo}/vendedores/{id}
-# indicadores/comercial/clientes_analytics/{periodo}
-# indicadores/comercial/articulos_analytics/{periodo}
-# indicadores/comercial/config/adn-weights
-ROOT_COL = 'indicadores'
-AREA_DOC = 'comercial'
-
-SUBCOLLECTIONS = {
-    'ventas': 'ventas_analytics',       # /ventas_analytics/{periodo}
-    'vendedores': 'vendedores',          # subcolección /ventas_analytics/{periodo}/vendedores/{id}
-    'clientes': 'clientes_analytics',    # /clientes_analytics/{periodo}
-    'articulos': 'articulos_analytics',  # /articulos_analytics/{periodo}
-    'config': 'config',                  # /config/adn-weights
-}
+FIREBASE_PROJECT_ID       = 'net-logistk-isla'

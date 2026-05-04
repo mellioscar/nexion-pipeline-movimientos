@@ -1,0 +1,130 @@
+import pandas as pd
+import numpy as np
+import firebase_admin
+from firebase_admin import credentials, firestore
+import config
+import logging
+
+log = logging.getLogger(__name__)
+
+def inicializar_firebase():
+    """Inicializa la conexión con Firestore."""
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
+        firebase_admin.initialize_app(cred)
+    return firestore.client()
+
+def subir_a_firebase(resultado, db):
+    """Sube el JSON consolidado a las colecciones de analytics e histórico."""
+    periodo = resultado['periodo']
+    
+    # Escribir en stock_analytics
+    doc_ref = db.collection('stock_analytics').document(periodo)
+    doc_ref.set(resultado, merge=True)
+    
+    # Escribir en stock_historico
+    doc_historico = db.collection('stock_historico').document(periodo)
+    doc_historico.set(resultado, merge=True)
+    
+    log.info(f"✓ Datos del período {periodo} guardados en Firestore exitosamente.")
+
+def limpiar_y_filtrar_datos(df):
+    """Aplica la regla estricta para chapas de 13 metros y limpia la data base."""
+    def es_articulo_auditable(desc):
+        desc_upper = str(desc).upper()
+        es_chapa = "CHAPA T 101" in desc_upper or "CHAPA CAN." in desc_upper
+        if es_chapa:
+            return "13.00" in desc_upper
+        return True # El resto de los artículos pasan normalmente
+
+    df_filtrado = df[df['Descripción'].apply(es_articulo_auditable)].copy()
+    
+    # Asegurar que los importes y cantidades sean numéricos
+    cols_numericas = ['Cant', 'CantIngreso', 'CantEgreso', 'Kgs', 'Imp. Costo']
+    for col in cols_numericas:
+        if col in df_filtrado.columns:
+            df_filtrado[col] = pd.to_numeric(df_filtrado[col], errors='coerce').fillna(0)
+            
+    return df_filtrado
+
+def analizar_interdepositos(df):
+    """Agrupa los movimientos de interdepósito restantes tras el filtro del pipeline."""
+    df_inter = df[df['Comp.'].isin(['REM-INTER', 'RCP-INTER'])]
+    
+    resumen = df_inter.groupby(['Depósito', 'Artículo', 'Descripción']).agg({
+        'Kgs': 'sum',
+        'Cant': 'sum',
+        'Imp. Costo': 'sum'
+    }).reset_index()
+    
+    return resumen.to_dict(orient='records')
+
+def analizar_ajustes(df):
+    """
+    Agrupa todos los ajustes para que el front haga la comparación mes a mes.
+    Valida internamente que las conversiones den neto 0.
+    """
+    # 1. Filtrar solo los comprobantes de ajuste
+    df_ajustes = df[df['Comp.'].isin(config.TIPOS_AJUSTE)].copy()
+    
+    # 2. Separar las conversiones (.CO)
+    es_conversion = df_ajustes['Comp.'].isin(['Ing.Stk.CO', 'Egr.Stk.CO'])
+    df_conversiones = df_ajustes[es_conversion].copy()
+    
+    # Para validar conversiones sumamos CantIngreso - CantEgreso 
+    # (o sumamos 'Cant' neta dependiendo de si los egresos ya vienen negativos)
+    # Asumimos que agrupando por Depósito y Artículo, el Imp. Costo o Cant neto debería tender a 0
+    resumen_conversiones = df_conversiones.groupby(['Depósito', 'Artículo', 'Descripción']).agg({
+        'CantIngreso': 'sum',
+        'CantEgreso': 'sum',
+        'Imp. Costo': 'sum',
+        'Kgs': 'sum'
+    }).reset_index()
+    
+    # Agregamos un flag booleano si la diferencia entre ingresos y egresos no es cero
+    resumen_conversiones['diferencia_neta'] = resumen_conversiones['CantIngreso'] - resumen_conversiones['CantEgreso']
+    resumen_conversiones['alerta_conversion'] = np.abs(resumen_conversiones['diferencia_neta']) > 0.01
+
+    # 3. Procesar el resto de los ajustes reales (DI, R, AC, etc.)
+    df_ajustes_reales = df_ajustes[~es_conversion].copy()
+    
+    resumen_ajustes = df_ajustes_reales.groupby(['Depósito', 'Comp.', 'Artículo', 'Descripción']).agg({
+        'CantIngreso': 'sum',
+        'CantEgreso': 'sum',
+        'Imp. Costo': 'sum',
+        'Kgs': 'sum'
+    }).reset_index()
+
+    return {
+        "conversiones": resumen_conversiones.to_dict(orient='records'),
+        "detalle_ajustes": resumen_ajustes.to_dict(orient='records')
+    }
+
+def analizar_periodo(ruta_excel, periodo, incluir_interdeposito=True, incluir_alertas=True):
+    """
+    Orquestador llamado por pipeline_movimientos_gmail.py.
+    """
+    # El archivo temporal del pipeline solo tiene 'Movimientos' y un 'Stock_Inicial' vacío
+    df_raw = pd.read_excel(ruta_excel, sheet_name="Movimientos")
+    df_limpio = limpiar_y_filtrar_datos(df_raw)
+    
+    # Calculamos la métrica base para que el log del pipeline funcione sin romperse
+    df_egresos = df_limpio[df_limpio['Comp.'].isin(config.TIPOS_EGRESO)]
+    total_egresos_pesos = float(df_egresos['Imp. Costo'].sum())
+    
+    resultados = {
+        "periodo": periodo,
+        "metricas_base": {
+            "egresos": {
+                "total_egresos": {
+                    "pesos": total_egresos_pesos
+                }
+            }
+        },
+        "ajustes_auditoria": analizar_ajustes(df_limpio)
+    }
+    
+    if incluir_interdeposito:
+        resultados["interdepositos"] = analizar_interdepositos(df_limpio)
+        
+    return resultados
