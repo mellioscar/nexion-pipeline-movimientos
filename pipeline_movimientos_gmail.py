@@ -37,6 +37,8 @@ Mapeo de columnas STK → analizar_stock.py:
   NomFMART      → Nombre familia
   NomGRART      → Nombre grupo
   NomRBART      → Nombre rubro
+  CodUMD        → UMD
+  NomVDR        → Vendedor
   (Cant, CantIngreso, CantEgreso, Kgs → mismo nombre, no se renombran)
 
 Firestore resultante:
@@ -99,6 +101,9 @@ MAPEO = {
     "NomFMART":     "Nombre familia",
     "NomGRART":     "Nombre grupo",
     "NomRBART":     "Nombre rubro",
+    "CodUMD":       "UMD",
+    "NomVDR":       "Vendedor",
+    "FecRPTO":      "Fec RPTO",   # Vacío → entrega en depósito | Con valor → reparto
 }
 
 # Las que validar_datos() exige con sys.exit(1)
@@ -258,9 +263,14 @@ def aplicar_exclusiones_interdeposito(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def preparar_excel_temporal(data: bytes) -> str:
-    # ... (código de normalización y exclusiones) ...
+    # 1. Leer los bytes del Excel a un DataFrame de pandas
+    df = pd.read_excel(io.BytesIO(data))
+    
+    # 2. Aplicar la normalización y las exclusiones
+    df = normalizar_columnas(df)
+    df = aplicar_exclusiones_interdeposito(df)
 
-    # Resumen antes de crear el temp
+    # 3. Resumen antes de crear el temp
     comps = df["Comp."].value_counts().to_dict()
     log.info(f"Comprobantes tras filtros: {comps}")
 
@@ -280,7 +290,6 @@ def preparar_excel_temporal(data: bytes) -> str:
         f"{len(df):,} movimientos"
     )
     return tmp.name
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
@@ -320,11 +329,10 @@ def main():
         #    Stock_Inicial vacío → modo diario (sin proyección de quiebres)
         db        = inicializar_firebase()
         resultado = analizar_periodo(
-            tmp_path,
-            periodo,
-            incluir_interdeposito=True,
-            incluir_alertas=True,
+                ruta_excel=tmp_path, 
+                periodo=periodo
         )
+
         subir_a_firebase(resultado, db)
 
         # 6. Marcar email procesado

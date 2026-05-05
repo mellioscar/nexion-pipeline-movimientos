@@ -18,6 +18,7 @@ archivos_a_procesar = {
     '2026_02.xlsx': '2026-02',
     '2026_03.xlsx': '2026-03',
     '2026_04.xlsx': '2026-04',
+    '2026_05.xlsx': '2026-05',
 }
 
 def main():
@@ -41,12 +42,10 @@ def main():
             # 2. Usamos tu misma función del pipeline para normalizar columnas y limpiar Hierro Torsionado
             tmp_path = preparar_excel_temporal(data)
             
-            # 3. Analizamos el período con la regla de chapas de 13m y separamos ajustes
+	    # 3. Analizamos el período con la regla de chapas de 13m y separamos ajustes
             resultado = analizar_periodo(
                 ruta_excel=tmp_path, 
-                periodo=periodo, 
-                incluir_interdeposito=True, 
-                incluir_alertas=True
+                periodo=periodo
             )
             
             # 4. Subimos a la nueva colección de indicadores
