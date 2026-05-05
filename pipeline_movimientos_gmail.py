@@ -103,7 +103,7 @@ MAPEO = {
     "NomRBART":     "Nombre rubro",
     "CodUMD":       "UMD",
     "NomVDR":       "Vendedor",
-    "FecRPTO":      "Fec RPTO",   # Vacío → entrega en depósito | Con valor → reparto
+    "FecRPTO":      "Fec. Reparto",  # Vacío → entrega en depósito | Con valor → reparto
 }
 
 # Las que validar_datos() exige con sys.exit(1)
@@ -338,11 +338,17 @@ def main():
         # 6. Marcar email procesado
         marcar_procesado(service, msg_id)
 
-        total = len(pd.read_excel(tmp_path, sheet_name="Movimientos"))
-        valor = resultado["metricas_base"]["egresos"]["total_egresos"]["pesos"]
+        rl    = resultado["resumen_liviano"]
+        mb    = rl["metricas_base"]
+        total = rl["entregas_por_deposito"]  # ya calculado, no releer el Excel
+        total_lineas  = mb["entregas"]["total_lineas"]
+        total_remitos = mb["entregas"]["total_remitos"]
+        val_ent = mb["entregas"]["total_pesos"]
+        val_rec = mb["recepciones"]["total_pesos"]
         log.info(f"\n✅ Pipeline completado — {periodo}")
-        log.info(f"   Movimientos : {total:,}")
-        log.info(f"   Valor total : ${valor/1e6:.1f}M")
+        log.info(f"   Entregas    : {total_remitos:,} remitos | {total_lineas:,} líneas | ${val_ent/1e6:.1f}M")
+        log.info(f"   Recepciones : ${val_rec/1e6:.1f}M")
+        log.info(f"   RMC         : ${mb['rmc']['total_pesos']/1e6:.1f}M")
 
     finally:
         if tmp_path and os.path.exists(tmp_path):
